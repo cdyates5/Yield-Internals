@@ -58,8 +58,23 @@ jobs:
           key: yim-data-${{ github.run_id }}
           restore-keys: yim-data-
 
-      - name: Build dashboard
-        id: build
+      # Build with a job-level retry. Yahoo Finance sometimes rate-limits GitHub's shared runner IPs (HTTP 429);
+      # rebuild.py already does a crumb handshake and per-request backoff, and on a warm cache a failed ticker
+      # falls back to yesterday's copy. This second attempt covers a cold cache landing in a bad Yahoo window.
+      - name: Build dashboard (first attempt)
+        id: build1
+        continue-on-error: true
+        run: python rebuild.py --out site --cache cache --max-age-days 5
+
+      - name: Wait and retry if the first attempt failed
+        if: ${{ steps.build1.outcome == 'failure' }}
+        run: |
+          echo "First build failed (exit ${{ steps.build1.outputs.exit_code || 'nonzero' }}); waiting 120s before retry."
+          sleep 120
+
+      - name: Build dashboard (retry)
+        if: ${{ steps.build1.outcome == 'failure' }}
+        id: build2
         run: python rebuild.py --out site --cache cache --max-age-days 5
 
       - name: Save download cache
