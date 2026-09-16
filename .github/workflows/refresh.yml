@@ -1,0 +1,108 @@
+name: Refresh yield internals dashboard
+
+on:
+  schedule:
+    # 23:30 UTC Mon-Fri: after the US close and Treasury's end-of-day yield curve.
+    # That is 09:30 AEST / 10:30 AEDT the next morning in Melbourne. GitHub may start scheduled runs late under load.
+    - cron: "30 23 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      clear_cache:
+        description: "Ignore the saved download cache and refetch everything"
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths:
+      - rebuild.py
+      - requirements.txt
+      - tests/**
+      - .github/workflows/refresh.yml
+  # PRs (including Dependabot action bumps) build and render-check, but never deploy.
+  pull_request:
+    paths:
+      - rebuild.py
+      - requirements.txt
+      - tests/**
+      - .github/workflows/refresh.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: yield-internals-${{ github.event_name == 'pull_request' && github.ref || 'main' }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      # Download cache carries Yahoo/Treasury history between runs, so a failed download
+      # falls back to yesterday's copy (flagged stale on the page) instead of breaking the build.
+      - name: Restore download cache
+        if: ${{ !inputs.clear_cache }}
+        uses: actions/cache/restore@v5
+        with:
+          path: cache
+          key: yim-data-${{ github.run_id }}
+          restore-keys: yim-data-
+
+      - name: Build dashboard
+        id: build
+        run: python rebuild.py --out site --cache cache --max-age-days 5
+
+      - name: Save download cache
+        if: ${{ always() && hashFiles('cache/**') != '' }}
+        uses: actions/cache/save@v5
+        with:
+          path: cache
+          key: yim-data-${{ github.run_id }}
+
+      - name: Install Chromium for render check
+        run: python -m playwright install --with-deps chromium
+
+      - name: Render check (zero console errors)
+        run: python tests/check_render.py site/index.html
+
+      - name: Upload dashboard as a downloadable artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: yield-internals-${{ github.run_number }}
+          path: site
+          include-hidden-files: true
+          retention-days: 30
+
+      - name: Upload Pages artifact
+        if: ${{ vars.DEPLOY_TARGET != 'artifact' && github.event_name != 'pull_request' }}
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy:
+    # Runs only if the build, the freshness guard and the render check all passed,
+    # so a bad day never replaces the last good page.
+    needs: build
+    if: ${{ vars.DEPLOY_TARGET != 'artifact' && github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+      actions: read
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
