@@ -1,0 +1,8 @@
+# Opens PRs when GitHub publishes new major/minor versions of the actions used in refresh.yml.
+# Python packages are pinned on purpose: a pandas/numpy upgrade can move the numbers, so bump those deliberately.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
