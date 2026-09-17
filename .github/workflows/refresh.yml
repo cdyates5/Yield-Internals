@@ -1,5 +1,5 @@
 name: Refresh yield internals dashboard
-
+ 
 on:
   schedule:
     # 23:30 UTC Mon-Fri: after the US close and Treasury's end-of-day yield curve.
@@ -25,29 +25,29 @@ on:
       - requirements.txt
       - tests/**
       - .github/workflows/refresh.yml
-
+ 
 permissions:
   contents: read
-
+ 
 concurrency:
   group: yield-internals-${{ github.event_name == 'pull_request' && github.ref || 'main' }}
   cancel-in-progress: false
-
+ 
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
-
+ 
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
-
+ 
       - name: Install Python dependencies
         run: pip install -r requirements.txt
-
+ 
       # Download cache carries Yahoo/Treasury history between runs, so a failed download
       # falls back to yesterday's copy (flagged stale on the page) instead of breaking the build.
       - name: Restore download cache
@@ -57,7 +57,7 @@ jobs:
           path: cache
           key: yim-data-${{ github.run_id }}
           restore-keys: yim-data-
-
+ 
       # Build with a job-level retry. Yahoo Finance sometimes rate-limits GitHub's shared runner IPs (HTTP 429);
       # rebuild.py already does a crumb handshake and per-request backoff, and on a warm cache a failed ticker
       # falls back to yesterday's copy. This second attempt covers a cold cache landing in a bad Yahoo window.
@@ -65,31 +65,35 @@ jobs:
         id: build1
         continue-on-error: true
         run: python rebuild.py --out site --cache cache --max-age-days 5
-
+        env:
+          TIINGO_TOKEN: ${{ secrets.TIINGO_TOKEN }}
+ 
       - name: Wait and retry if the first attempt failed
         if: ${{ steps.build1.outcome == 'failure' }}
         run: |
           echo "First build failed (exit ${{ steps.build1.outputs.exit_code || 'nonzero' }}); waiting 120s before retry."
           sleep 120
-
+ 
       - name: Build dashboard (retry)
         if: ${{ steps.build1.outcome == 'failure' }}
         id: build2
         run: python rebuild.py --out site --cache cache --max-age-days 5
-
+        env:
+          TIINGO_TOKEN: ${{ secrets.TIINGO_TOKEN }}
+ 
       - name: Save download cache
         if: ${{ always() && hashFiles('cache/**') != '' }}
         uses: actions/cache/save@v5
         with:
           path: cache
           key: yim-data-${{ github.run_id }}
-
+ 
       - name: Install Chromium for render check
         run: python -m playwright install --with-deps chromium
-
+ 
       - name: Render check (zero console errors)
         run: python tests/check_render.py site/index.html
-
+ 
       - name: Upload dashboard as a downloadable artifact
         uses: actions/upload-artifact@v7
         with:
@@ -97,13 +101,13 @@ jobs:
           path: site
           include-hidden-files: true
           retention-days: 30
-
+ 
       - name: Upload Pages artifact
         if: ${{ vars.DEPLOY_TARGET != 'artifact' && github.event_name != 'pull_request' }}
         uses: actions/upload-pages-artifact@v5
         with:
           path: site
-
+ 
   deploy:
     # Runs only if the build, the freshness guard and the render check all passed,
     # so a bad day never replaces the last good page.
@@ -121,3 +125,4 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
+ 
