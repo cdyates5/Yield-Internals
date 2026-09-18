@@ -64,7 +64,7 @@ jobs:
       - name: Build dashboard (first attempt)
         id: build1
         continue-on-error: true
-        run: python rebuild.py --out site --cache cache --max-age-days 5
+        run: python rebuild.py --out site --cache cache --max-age-days 7
         env:
           TIINGO_TOKEN: ${{ secrets.TIINGO_TOKEN }}
 
@@ -77,7 +77,7 @@ jobs:
       - name: Build dashboard (retry)
         if: ${{ steps.build1.outcome == 'failure' }}
         id: build2
-        run: python rebuild.py --out site --cache cache --max-age-days 5
+        run: python rebuild.py --out site --cache cache --max-age-days 7
         env:
           TIINGO_TOKEN: ${{ secrets.TIINGO_TOKEN }}
 
