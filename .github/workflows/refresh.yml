@@ -52,7 +52,7 @@ jobs:
       # falls back to yesterday's copy (flagged stale on the page) instead of breaking the build.
       - name: Restore download cache
         if: ${{ !inputs.clear_cache }}
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: cache
           key: yim-data-${{ github.run_id }}
@@ -83,7 +83,7 @@ jobs:
 
       - name: Save download cache
         if: ${{ always() && hashFiles('cache/**') != '' }}
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@v6
         with:
           path: cache
           key: yim-data-${{ github.run_id }}
