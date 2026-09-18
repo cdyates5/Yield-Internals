@@ -67,6 +67,7 @@ jobs:
         run: python rebuild.py --out site --cache cache --max-age-days 7
         env:
           TIINGO_TOKEN: ${{ secrets.TIINGO_TOKEN }}
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
 
       - name: Wait and retry if the first attempt failed
         if: ${{ steps.build1.outcome == 'failure' }}
@@ -80,6 +81,7 @@ jobs:
         run: python rebuild.py --out site --cache cache --max-age-days 7
         env:
           TIINGO_TOKEN: ${{ secrets.TIINGO_TOKEN }}
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
 
       - name: Save download cache
         if: ${{ always() && hashFiles('cache/**') != '' }}
